@@ -1,19 +1,28 @@
 import { NextResponse } from 'next/server';
 import * as admin from 'firebase-admin';
 
+export const dynamic = 'force-dynamic';
+
 // 1. Initialize Firebase Admin (Server-Side)
 if (!admin.apps.length) {
-        admin.initializeApp({
-                credential: admin.credential.cert({
-                        projectId: process.env.FIREBASE_PROJECT_ID,
-                        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-                        // Handle newline characters in the private key
-                        privateKey: process.env.FIREBASE_PRIVATE_KEY
-                                ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n')
-                                : undefined,
-                }),
-        });
-}
+        if (process.env.FIREBASE_PRIVATE_KEY) {
+                try {
+                        admin.initializeApp({
+                                credential: admin.credential.cert({
+                                        projectId: process.env.FIREBASE_PROJECT_ID,
+                                        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+                                        privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+                                }),
+                        });
+                        console.log("Firebase initialized successfully");
+                } catch (error) {
+                        console.error("Firebase init failed:", error);
+                }
+        } else {
+                // This log prevents the build from crashing if keys are missing
+                console.warn("Firebase Private Key not found. Skipping init during build.");
+        }
+    }
 
 const db = admin.firestore();
 

@@ -3,13 +3,11 @@ import * as admin from 'firebase-admin';
 
 export const dynamic = 'force-dynamic';
 
-// 1. Initialize Firebase Admin (Server-Side)
 function getDB() {
         if (admin.apps.length > 0) {
                 return admin;
         }
 
-        // Get the encoded file
         const serviceAccountBase64 = process.env.FIREBASE_SERVICE_ACCOUNT_BASE64;
 
         if (!serviceAccountBase64) {
@@ -17,20 +15,27 @@ function getDB() {
         }
 
         try {
-                // DECODE: Base64 -> String -> JSON Object
-                const serviceAccountJson = JSON.parse(
-                        Buffer.from(serviceAccountBase64, 'base64').toString('utf-8')
-                );
+                // 1. Decode the Base64 string
+                const decodedBuffer = Buffer.from(serviceAccountBase64, 'base64');
+                const decodedString = decodedBuffer.toString('utf-8');
+
+                // DEBUG: Check if it looks like JSON before parsing
+                // (We log only the first 20 chars to be safe)
+                console.log("DEBUG: Decoded Start ->", decodedString.substring(0, 20) + "...");
+
+                // 2. Parse JSON
+                const serviceAccountJson = JSON.parse(decodedString);
 
                 admin.initializeApp({
-                        credential: admin.credential.cert(serviceAccountJson), // Pass the whole object directly
+                        credential: admin.credential.cert(serviceAccountJson),
                 });
 
-                console.log("Firebase initialized successfully (Base64 method)");
+                console.log("Firebase initialized successfully");
         } catch (error: any) {
                 console.error("Firebase Init Failed:", error);
-                // If it fails here, it's definitely a bad Base64 string
-                throw new Error("Failed to parse Service Account. Check Base64 string.");
+
+                // Throw a visible error for the API response
+                throw new Error(`Failed to parse Service Account. Reason: ${error.message}`);
         }
 
         return admin;

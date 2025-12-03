@@ -5,89 +5,70 @@ export const dynamic = 'force-dynamic';
 
 // 1. Initialize Firebase Admin (Server-Side)
 function getDB() {
-        if (!admin.apps.length) {
-                if (process.env.FIREBASE_PRIVATE_KEY) {
-                        try {
-                                admin.initializeApp({
-                                        credential: admin.credential.cert({
-                                                projectId: process.env.FIREBASE_PROJECT_ID,
-                                                clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-                                                privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
-                                        }),
-                                });
-                                console.log("Firebase initialized successfully");
-                        } catch (error) {
-                                console.error("Firebase init failed:", error);
-                        }
-                } else {
-                        // This log prevents the build from crashing if keys are missing
-                        console.warn("Firebase Private Key not found. Skipping init during build.");
-                }
+        if (admin.apps.length > 0) {
+                return admin;
         }
 
-        return admin.firestore();
+        // Get the encoded file
+        const serviceAccountBase64 = process.env.FIREBASE_SERVICE_ACCOUNT_BASE64;
+
+        if (!serviceAccountBase64) {
+                throw new Error("FIREBASE_SERVICE_ACCOUNT_BASE64 is missing!");
+        }
+
+        try {
+                // DECODE: Base64 -> String -> JSON Object
+                const serviceAccountJson = JSON.parse(
+                        Buffer.from(serviceAccountBase64, 'base64').toString('utf-8')
+                );
+
+                admin.initializeApp({
+                        credential: admin.credential.cert(serviceAccountJson), // Pass the whole object directly
+                });
+
+                console.log("Firebase initialized successfully (Base64 method)");
+        } catch (error: any) {
+                console.error("Firebase Init Failed:", error);
+                // If it fails here, it's definitely a bad Base64 string
+                throw new Error("Failed to parse Service Account. Check Base64 string.");
+        }
+
+        return admin;
 }
 
 
 // 2. Helper to verify ID Token
 async function verifyAuth(request: Request) {
-        getDB()
-        const authHeader = request.headers.get('Authorization');
+        const app = getDB();
 
-        if (!authHeader || !authHeader.startsWith('Bearer ')) {
-                console.log(authHeader);
-                return null;
-        }
+        const authHeader = request.headers.get('Authorization');
+        if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
 
         const token = authHeader.split('Bearer ')[1];
 
-        console.log("2. Token found:", token.substring(0, 10) + "...");
-
         try {
-                const decodedToken = await admin.auth().verifyIdToken(token);
-                console.log("User Found:", decodedToken.uid)
+                const decodedToken = await app.auth().verifyIdToken(token);
                 return decodedToken.uid;
-        } catch (error: any) {
-                // LOG 2: THE REAL REASON
-                console.error("DEBUG: TOKEN REJECTED. Code:", error.code);
-                console.error("DEBUG: Error Message:", error.message);
-
-                // Check for specific common errors
-                if (error.code === 'auth/argument-error') {
-                        console.error("HINT: The token string is malformed or empty.");
-                }
-                if (error.code === 'auth/id-token-expired') {
-                        console.error("HINT: Token is too old. Frontend needs to refresh it.");
-                }
+        } catch (error) {
+                console.error("Auth Failed:", error);
                 return null;
-              }
+        }
 }
 
 // === GET: Fetch Transactions ===
 export async function GET(request: Request) {
-        console.log("------------------------------------------------");
-        console.log("Checking Env Vars:");
-        console.log("Project ID:", process.env.FIREBASE_PROJECT_ID); // Safe to log
-        console.log("Client Email:", process.env.FIREBASE_CLIENT_EMAIL); // Safe to log
-
-        // NEVER log the full Private Key. Just check if it exists.
-        const hasKey = !!process.env.FIREBASE_PRIVATE_KEY;
-        console.log("Has Private Key?", hasKey ? "YES" : "NO");
-        console.log("------------------------------------------------");
-
-        const uid = await verifyAuth(request);
-
-        if (!uid) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
         try {
-                const db = getDB()
+                const uid = await verifyAuth(request);
+                if (!uid) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+                const db = getDB().firestore();
                 const snapshot = await db.collection(`users/${uid}/transactions`).get();
+
                 const transactions = snapshot.docs.map(doc => {
                         const data = doc.data();
                         return {
                                 id: doc.id,
                                 ...data,
-                                // Convert Firestore Timestamp to String
                                 date: data.date && data.date.toDate ? data.date.toDate().toISOString() : data.date
                         };
                 });
@@ -98,30 +79,23 @@ export async function GET(request: Request) {
         }
 }
 
-// === POST: Add Transaction ===
 export async function POST(request: Request) {
-        const uid = await verifyAuth(request);
-        if (!uid) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
         try {
-                const db = getDB()
+                const uid = await verifyAuth(request);
+                if (!uid) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
+                const db = getDB().firestore();
                 const data = await request.json();
-                const { id, ...txData } = data; // Separate ID if editing
+                const { id, ...txData } = data;
 
-                // Ensure date is a proper Date object for Firestore
-                if (txData.date) {
-                        txData.date = new Date(txData.date);
-                }
+                if (txData.date) txData.date = new Date(txData.date);
 
                 const collectionRef = db.collection(`users/${uid}/transactions`);
 
                 if (id) {
-                        // Edit existing
                         await collectionRef.doc(id).set(txData, { merge: true });
                         return NextResponse.json({ message: 'Updated', id });
                 } else {
-                        // Create new
                         const docRef = await collectionRef.add(txData);
                         return NextResponse.json({ message: 'Created', id: docRef.id });
                 }
@@ -130,23 +104,20 @@ export async function POST(request: Request) {
         }
 }
 
-// === DELETE: Remove Transaction ===
 export async function DELETE(request: Request) {
-        const uid = await verifyAuth(request);
-        if (!uid) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-        // Get ID from URL query parameters (e.g., ?id=123)
-        const { searchParams } = new URL(request.url);
-        const id = searchParams.get('id');
-
-        if (!id) return NextResponse.json({ error: 'Missing ID' }, { status: 400 });
-
         try {
-                const db = getDB()
+                const uid = await verifyAuth(request);
+                if (!uid) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+
+                const db = getDB().firestore();
+                const { searchParams } = new URL(request.url);
+                const id = searchParams.get('id');
+
+                if (!id) return NextResponse.json({ error: 'Missing ID' }, { status: 400 });
 
                 await db.collection(`users/${uid}/transactions`).doc(id).delete();
                 return NextResponse.json({ message: 'Deleted' });
         } catch (error: any) {
                 return NextResponse.json({ error: error.message }, { status: 500 });
         }
-}
+    }

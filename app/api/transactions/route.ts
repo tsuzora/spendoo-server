@@ -28,12 +28,15 @@ const db = admin.firestore();
 
 // 2. Helper to verify ID Token
 async function verifyAuth(request: Request) {
-        const token = request.headers.get('Authorization');
-        if (!token) {
-                console.log("NO TOKEN/NULL")
+        const authHeader = request.headers.get('Authorization');
+
+
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+                console.log("NO TOKEN OR BAD FORMAT");
                 return null;
         }
 
+        const token = authHeader.split('Bearer ')[1];
         console.log("2. Token found:", token.substring(0, 10) + "...");
 
         try {

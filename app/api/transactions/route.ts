@@ -29,12 +29,27 @@ const db = admin.firestore();
 // 2. Helper to verify ID Token
 async function verifyAuth(request: Request) {
         const token = request.headers.get('Authorization');
-        if (!token) return null;
+        if (!token) {
+                console.log("NO TOKEN/NULL")
+                return null;
+        }
+
+        console.log("2. Token found:", token.substring(0, 10) + "...");
 
         try {
                 const decodedToken = await admin.auth().verifyIdToken(token);
+                console.log("User Found:", decodedToken.uid)
                 return decodedToken.uid;
         } catch (error) {
+
+                console.error("VERIFICATION FAILED:", error);
+
+                if (error === 'auth/argument-error') {
+                        console.log("Hint: Token format looks wrong (Is it empty string?)");
+                }
+                if (error === 'auth/id-token-expired') {
+                        console.log("Hint: Token is old. Logout and Login again.");
+                   }
                 return null;
         }
 }

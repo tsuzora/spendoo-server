@@ -41,6 +41,15 @@ async function verifyAuth(request: Request) {
 
 // === GET: Fetch Transactions ===
 export async function GET(request: Request) {
+        console.log("------------------------------------------------");
+        console.log("Checking Env Vars:");
+        console.log("Project ID:", process.env.FIREBASE_PROJECT_ID); // Safe to log
+        console.log("Client Email:", process.env.FIREBASE_CLIENT_EMAIL); // Safe to log
+
+        // NEVER log the full Private Key. Just check if it exists.
+        const hasKey = !!process.env.FIREBASE_PRIVATE_KEY;
+        console.log("Has Private Key?", hasKey ? "YES" : "NO");
+        console.log("------------------------------------------------");
         const uid = await verifyAuth(request);
         if (!uid) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 

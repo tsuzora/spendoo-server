@@ -46,18 +46,20 @@ async function verifyAuth(request: Request) {
                 const decodedToken = await admin.auth().verifyIdToken(token);
                 console.log("User Found:", decodedToken.uid)
                 return decodedToken.uid;
-        } catch (error) {
+        } catch (error: any) {
+                // LOG 2: THE REAL REASON
+                console.error("DEBUG: TOKEN REJECTED. Code:", error.code);
+                console.error("DEBUG: Error Message:", error.message);
 
-                console.error("VERIFICATION FAILED:", error);
-
-                if (error === 'auth/argument-error') {
-                        console.log("Hint: Token format looks wrong (Is it empty string?)");
+                // Check for specific common errors
+                if (error.code === 'auth/argument-error') {
+                        console.error("HINT: The token string is malformed or empty.");
                 }
-                if (error === 'auth/id-token-expired') {
-                        console.log("Hint: Token is old. Logout and Login again.");
+                if (error.code === 'auth/id-token-expired') {
+                        console.error("HINT: Token is too old. Frontend needs to refresh it.");
                 }
                 return null;
-        }
+              }
 }
 
 // === GET: Fetch Transactions ===
@@ -140,7 +142,7 @@ export async function DELETE(request: Request) {
 
         try {
                 const db = getDB()
-                
+
                 await db.collection(`users/${uid}/transactions`).doc(id).delete();
                 return NextResponse.json({ message: 'Deleted' });
         } catch (error: any) {

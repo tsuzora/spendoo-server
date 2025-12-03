@@ -30,13 +30,13 @@ const db = admin.firestore();
 async function verifyAuth(request: Request) {
         const authHeader = request.headers.get('Authorization');
 
-
         if (!authHeader || !authHeader.startsWith('Bearer ')) {
-                console.log("NO TOKEN OR BAD FORMAT");
+                console.log(authHeader);
                 return null;
         }
 
         const token = authHeader.split('Bearer ')[1];
+
         console.log("2. Token found:", token.substring(0, 10) + "...");
 
         try {
@@ -68,7 +68,9 @@ export async function GET(request: Request) {
         const hasKey = !!process.env.FIREBASE_PRIVATE_KEY;
         console.log("Has Private Key?", hasKey ? "YES" : "NO");
         console.log("------------------------------------------------");
+
         const uid = await verifyAuth(request);
+
         if (!uid) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
         try {

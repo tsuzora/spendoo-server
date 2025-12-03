@@ -4,27 +4,30 @@ import * as admin from 'firebase-admin';
 export const dynamic = 'force-dynamic';
 
 // 1. Initialize Firebase Admin (Server-Side)
-if (!admin.apps.length) {
-        if (process.env.FIREBASE_PRIVATE_KEY) {
-                try {
-                        admin.initializeApp({
-                                credential: admin.credential.cert({
-                                        projectId: process.env.FIREBASE_PROJECT_ID,
-                                        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-                                        privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
-                                }),
-                        });
-                        console.log("Firebase initialized successfully");
-                } catch (error) {
-                        console.error("Firebase init failed:", error);
+function getDB() {
+        if (!admin.apps.length) {
+                if (process.env.FIREBASE_PRIVATE_KEY) {
+                        try {
+                                admin.initializeApp({
+                                        credential: admin.credential.cert({
+                                                projectId: process.env.FIREBASE_PROJECT_ID,
+                                                clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+                                                privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+                                        }),
+                                });
+                                console.log("Firebase initialized successfully");
+                        } catch (error) {
+                                console.error("Firebase init failed:", error);
+                        }
+                } else {
+                        // This log prevents the build from crashing if keys are missing
+                        console.warn("Firebase Private Key not found. Skipping init during build.");
                 }
-        } else {
-                // This log prevents the build from crashing if keys are missing
-                console.warn("Firebase Private Key not found. Skipping init during build.");
         }
-    }
 
-const db = admin.firestore();
+        return admin.firestore();
+}
+
 
 // 2. Helper to verify ID Token
 async function verifyAuth(request: Request) {
@@ -52,7 +55,7 @@ async function verifyAuth(request: Request) {
                 }
                 if (error === 'auth/id-token-expired') {
                         console.log("Hint: Token is old. Logout and Login again.");
-                   }
+                }
                 return null;
         }
 }
@@ -74,6 +77,7 @@ export async function GET(request: Request) {
         if (!uid) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
         try {
+                const db = getDB()
                 const snapshot = await db.collection(`users/${uid}/transactions`).get();
                 const transactions = snapshot.docs.map(doc => {
                         const data = doc.data();
@@ -97,6 +101,8 @@ export async function POST(request: Request) {
         if (!uid) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
         try {
+                const db = getDB()
+
                 const data = await request.json();
                 const { id, ...txData } = data; // Separate ID if editing
 
@@ -133,6 +139,8 @@ export async function DELETE(request: Request) {
         if (!id) return NextResponse.json({ error: 'Missing ID' }, { status: 400 });
 
         try {
+                const db = getDB()
+                
                 await db.collection(`users/${uid}/transactions`).doc(id).delete();
                 return NextResponse.json({ message: 'Deleted' });
         } catch (error: any) {
